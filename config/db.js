@@ -3,11 +3,11 @@ const { Pool } = require('pg');
 const moment = require('moment-timezone');
 
 const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'skenterprises',
-  password: 'Postgres_1234@',
-  port: 5433,
+  user: 'skretail',
+  host: '13.127.25.77',
+  database: 'skretaildatabase',
+  password: 'Skretai4321',
+  port: 5432,
 });
 
 module.exports = pool;
