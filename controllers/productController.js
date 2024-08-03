@@ -1,63 +1,67 @@
 const pool = require('../config/db');
 
-// Function to check for duplicate corporate codes in the database
-const checkDuplicates = async (corporateCodes) => {
-  const query = `
-    SELECT corporatecode 
-    FROM products 
-    WHERE corporatecode = ANY($1::varchar[])
-  `;
-  const result = await pool.query(query, [corporateCodes]);
-  return result.rows.map(row => row.corporatecode);
-};
 
-// Function to find duplicate corporate codes in a chunk of data
-const findDuplicateInChunk = (chunk) => {
-  const seen = new Set();
-  const duplicates = new Set();
-  chunk.forEach(row => {
-    if (seen.has(row.corporatecode)) {
-      duplicates.add(row.corporatecode);
-    } else {
-      seen.add(row.corporatecode);
-    }
-  });
-  return Array.from(duplicates);
-};
-
-// Function to handle uploading a chunk of data
 exports.uploadChunk = async (req, res) => {
-  const chunk = req.body.data;
-  const corporateCodes = chunk.map(row => row.corporatecode);
-
-  const duplicateInChunk = findDuplicateInChunk(chunk);
-  if (duplicateInChunk.length > 0) {
-    return res.status(400).json({ error: `Duplicate corporate codes in the chunk: ${duplicateInChunk.join(', ')}` });
-  }
+  const { data } = req.body;
+  const errors = [];
+  const validData = [];
 
   try {
-    const duplicatesInDB = await checkDuplicates(corporateCodes);
+    const client = await pool.connect();
 
-    if (duplicatesInDB.length > 0) {
-      return res.status(400).json({ error: `Duplicate corporate codes in the database: ${duplicatesInDB.join(', ')}` });
+    // Check for duplicates in the chunk
+    const uniqueCorporateCodes = new Set();
+    data.forEach(item => {
+      if (uniqueCorporateCodes.has(item.corporatecode)) {
+        // Include all fields of the item in the errors
+        errors.push({ ...item, error: 'Duplicate in chunk' });
+      } else {
+        uniqueCorporateCodes.add(item.corporatecode);
+        validData.push(item);
+      }
+    });
+
+    if (errors.length > 0) {
+      return res.status(400).json({ errors, validData });
     }
 
-    const currentDate = new Date().toISOString(); // Current timestamp
+    // Check for duplicates in the database
+    const corporateCodes = validData.map(item => item.corporatecode);
+    const result = await client.query(
+      'SELECT corporatecode FROM products WHERE corporatecode = ANY($1::text[])',
+      [corporateCodes]
+    );
 
-    const values = chunk.map(row => `('${row.corporatecode}', '${row.skucode}', '${row.imageurl}', '${currentDate}', '${currentDate}')`).join(',');
+    // Create errors based on database results
+    const databaseErrors = validData.filter(item =>
+      result.rows.some(row => row.corporatecode === item.corporatecode)
+    ).map(item => ({ ...item, error: 'Duplicate in database' }));
 
-    const query = `
-      INSERT INTO products (corporatecode, skucode, imageurl, created_at, updated_at)
-      VALUES ${values}
-    `;
+    if (databaseErrors.length > 0) {
+      // Exclude errors from validData
+      const filteredValidData = validData.filter(item =>
+        !databaseErrors.some(error => error.corporatecode === item.corporatecode)
+      );
 
-    await pool.query(query);
-    res.status(200).send('Chunk uploaded successfully');
+      return res.status(400).json({ errors: [...databaseErrors, ...errors], validData: filteredValidData });
+    }
+
+    // Insert data into the database
+    const insertQuery = 'INSERT INTO products (skucode, corporatecode, imageurl) VALUES ($1, $2, $3)';
+    const insertPromises = validData.map(item =>
+      client.query(insertQuery, [item.skucode, item.corporatecode, item.imageurl])
+    );
+
+    await Promise.all(insertPromises);
+    client.release();
+
+    return res.status(200).json({ message: 'Data uploaded successfully' });
   } catch (error) {
-    console.error('Error inserting chunk:', error);
-    res.status(500).send('Error inserting chunk');
+    console.error('Error uploading data:', error);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 
 
 // Function to retrieve all products

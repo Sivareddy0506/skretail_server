@@ -1,6 +1,6 @@
 // middleware/authMiddleware.js
 const jwt = require('jsonwebtoken');
-const JWT_SECRET = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjIsImlhdCI6MTcyMDc2MTI0MywiZXhwIjoxNzIwNzY0ODQzfQ.eEHBDfkfWW6bUgbRTFMSzA5OjeHxWyxVLxbdz5BTf8s'; // Replace with your secret key for JWT
+const JWT_SECRET = 'Mwx0uSd0fF5hGNDWZ3T+ohGZFhMOn+RwF30jO39n+5w='; // Replace with your secret key for JWT
 
 
 const authenticateToken = (req, res, next) => {
